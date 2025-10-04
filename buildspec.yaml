@@ -26,8 +26,3 @@ phases:
       - docker push $LATEST_URI
       - echo Image URI: $IMAGE_URI
       - echo Latest URI: $LATEST_URI
-
-artifacts:
-  files:
-    - '**/*'
-  name: coworking-analytics-build
