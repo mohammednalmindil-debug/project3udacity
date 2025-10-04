@@ -38,7 +38,7 @@ phases:
 
       # Write image definitions file for CodePipeline
       - echo Writing image definitions file...
-      - printf '[{"name":"coworking-analytics","imageUri":"%s"}]' $IMAGE_URI > imagedefinitions.json
+      - echo '[{"name":"coworking-analytics","imageUri":"'$IMAGE_URI'"}]' > imagedefinitions.json
 
       # Display image URI for reference
       - echo Image URI: $IMAGE_URI
