@@ -1,0 +1,28 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME
+      - IMAGE_TAG=$CODEBUILD_BUILD_NUMBER
+      - IMAGE_URI=$REPOSITORY_URI:$IMAGE_TAG
+      - LATEST_URI=$REPOSITORY_URI:latest
+
+  build:
+    commands:
+      - echo Build started
+      - echo Building the Docker image...
+      - cd analytics
+      - docker build -t $IMAGE_URI .
+      - docker tag $IMAGE_URI $LATEST_URI
+
+  post_build:
+    commands:
+      - echo Build completed
+      - echo Pushing the Docker images...
+      - docker push $IMAGE_URI
+      - docker push $LATEST_URI
+      - echo Image URI: $IMAGE_URI
+      - echo Latest URI: $LATEST_URI
