@@ -30,4 +30,4 @@ phases:
 artifacts:
   files:
     - '**/*'
-  name: coworking-analytics-$(date +%Y-%m-%d)
+  name: coworking-analytics-build
