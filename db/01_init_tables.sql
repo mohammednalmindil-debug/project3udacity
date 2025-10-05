@@ -133,3 +133,4 @@ VALUES (
         'token_klmno',
         '2024-12-31 23:59:59'
     ) ON CONFLICT (token) DO NOTHING;
+

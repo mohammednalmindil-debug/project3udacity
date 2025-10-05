@@ -69,3 +69,5 @@ echo "4. Test user visits report: curl http://<EXTERNAL_IP>:5153/api/reports/use
 
 echo ""
 echo "Deployment completed successfully!"
+
+

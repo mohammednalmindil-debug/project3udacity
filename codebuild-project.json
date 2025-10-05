@@ -32,3 +32,5 @@
   "serviceRole": "arn:aws:iam::767398149973:role/CoworkingAnalyticsCodeBuildRole",
   "timeoutInMinutes": 60
 }
+
+

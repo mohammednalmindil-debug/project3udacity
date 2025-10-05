@@ -64,3 +64,5 @@ echo "1. Push your code to GitHub repository"
 echo "2. Connect GitHub repository to CodeBuild project"
 echo "3. Trigger a build to create Docker image in ECR"
 echo "4. Deploy to Kubernetes using the provided YAML files"
+
+

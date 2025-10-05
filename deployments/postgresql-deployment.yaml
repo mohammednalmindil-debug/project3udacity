@@ -30,3 +30,4 @@ spec:
         - name: postgresql-storage
           persistentVolumeClaim:
             claimName: postgresql-pvc
+

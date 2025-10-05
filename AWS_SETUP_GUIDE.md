@@ -154,3 +154,5 @@ aws iam delete-policy --policy-arn arn:aws:iam::767398149973:policy/CoworkingAna
 # Delete ECR repository (this will delete all images)
 aws ecr delete-repository --repository-name coworking-analytics --force
 ```
+
+

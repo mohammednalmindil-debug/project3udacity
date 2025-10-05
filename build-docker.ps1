@@ -76,3 +76,5 @@ Write-Host "3. Deploy application: kubectl apply -f configmap.yaml secret.yaml c
 Write-Host "4. Test endpoints and take screenshots for submission" -ForegroundColor White
 
 Set-Location ..
+
+

@@ -113,3 +113,5 @@
 - **Monitoring**: Use CloudWatch Container Insights for cost tracking
 
 The project is now fully configured and ready for deployment. All AWS resources are created and verified, and the Kubernetes configurations are prepared for immediate deployment.
+
+
