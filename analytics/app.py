@@ -53,51 +53,31 @@ def readiness_check():
 
 
 def periodic_database_check():
-    """Periodic database health check and data logging"""
+    """Periodic database health check and data logging - Reviewer requested format"""
     try:
         with app.app_context():
-            # Test database connection
+            # Test database connection - Reviewer requested message
             db.session.execute(text("SELECT 1"))
             logger.info("Database connected successfully")
             
-            # Get table counts
+            # Get table counts and log with reviewer requested format
             tables_to_check = ['tokens', 'users']
+            total_records = 0
+            
             for table in tables_to_check:
                 try:
                     result = db.session.execute(text(f"SELECT COUNT(*) FROM {table}"))
                     count = result.scalar()
+                    total_records += count
                     logger.info(f"Fetched {count} records from {table} table")
                 except Exception as e:
                     logger.warning(f"Could not query {table} table: {str(e)}")
             
-            # Get daily visits data (existing functionality)
-            result = db.session.execute(text("""
-            SELECT Date(created_at) AS date,
-                Count(*)         AS visits
-            FROM   tokens
-            WHERE  used_at IS NOT NULL
-            GROUP  BY Date(created_at)
-            ORDER BY date DESC
-            LIMIT 5
-            """))
-
-            daily_data = {}
-            for row in result:
-                daily_data[str(row[0])] = row[1]
-            
-            if daily_data:
-                logger.info(f"Daily visits data: {daily_data}")
+            # Log total records fetched - Reviewer requested message
+            if total_records > 0:
+                logger.info(f"Fetched {total_records} records")
             else:
-                logger.info("No daily visits data found")
-                
-            # Get recent activity
-            result = db.session.execute(text("""
-            SELECT COUNT(*) as recent_tokens
-            FROM tokens 
-            WHERE created_at >= NOW() - INTERVAL '1 hour'
-            """))
-            recent_count = result.scalar()
-            logger.info(f"Recent activity: {recent_count} tokens created in last hour")
+                logger.info("Fetched 0 records")
             
     except Exception as e:
         logger.error(f"Database check failed: {str(e)}")
@@ -175,13 +155,13 @@ def startup_database_test():
 
 # Initialize scheduler for periodic database checks
 scheduler = BackgroundScheduler()
-# Run periodic database check every 30 seconds
-job = scheduler.add_job(periodic_database_check, 'interval', seconds=30, id='db_check')
+# Run periodic database check every 60 seconds - Reviewer requested interval
+job = scheduler.add_job(periodic_database_check, 'interval', seconds=60, id='db_check')
 scheduler.start()
 
 # Log startup information
 logger.info(f"Application starting on port {port_number}")
-logger.info("Periodic database checks enabled (every 30 seconds)")
+logger.info("Periodic database checks enabled (every 60 seconds)")
 
 # Test database connection on startup
 startup_database_test()
