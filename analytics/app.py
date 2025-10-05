@@ -1,118 +1,85 @@
-from flask import Flask, jsonify
-import psycopg2
+import logging
 import os
-from datetime import datetime
 
-app = Flask(__name__)
+from apscheduler.schedulers.background import BackgroundScheduler
+from datetime import datetime, timedelta
+from flask import jsonify, request
+from sqlalchemy import and_, text
+from random import randint
 
-# Database configuration from environment variables
-DB_CONFIG = {
-    'host': os.getenv('DB_HOST', 'localhost'),
-    'port': os.getenv('DB_PORT', '5432'),
-    'database': os.getenv('DB_NAME', 'mydatabase'),
-    'user': os.getenv('DB_USERNAME', 'myuser'),
-    'password': os.getenv('DB_PASSWORD', 'mypassword')
-}
+from config import app, db
 
-def get_db_connection():
-    """Create and return a database connection"""
-    try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        return conn
-    except psycopg2.Error as e:
-        print(f"Database connection error: {e}")
-        return None
 
-@app.route('/health_check')
+port_number = int(os.environ.get("APP_PORT", 5153))
+
+
+@app.route("/health_check")
 def health_check():
-    """Health check endpoint"""
-    conn = get_db_connection()
-    if conn:
-        conn.close()
-        return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()}), 200
-    else:
-        return jsonify({"status": "unhealthy", "timestamp": datetime.now().isoformat()}), 500
+    return "ok"
 
-@app.route('/readiness_check')
+
+@app.route("/readiness_check")
 def readiness_check():
-    """Readiness check endpoint"""
-    conn = get_db_connection()
-    if conn:
-        conn.close()
-        return jsonify({"status": "ready", "timestamp": datetime.now().isoformat()}), 200
-    else:
-        return jsonify({"status": "not ready", "timestamp": datetime.now().isoformat()}), 500
+    # try:
+    #     count = db.session.query(Token).count()
+    # except Exception as e:
+    #     app.logger.error(e)
+    #     return "failed", 500
+    # else:
+        return "ok"
 
-@app.route('/api/reports/daily_usage')
-def daily_usage_report():
-    """Generate report for check-ins grouped by dates"""
-    conn = get_db_connection()
-    if not conn:
-        return jsonify({"error": "Database connection failed"}), 500
+
+def get_daily_visits():
+    with app.app_context():
+        result = db.session.execute(text("""
+        SELECT Date(created_at) AS date,
+            Count(*)         AS visits
+        FROM   tokens
+        WHERE  used_at IS NOT NULL
+        GROUP  BY Date(created_at)
+        """))
+
+        response = {}
+        for row in result:
+            response[str(row[0])] = row[1]
+
+        app.logger.info(response)
+
+    return response
+
+
+@app.route("/api/reports/daily_usage", methods=["GET"])
+def daily_visits():
+    return jsonify(get_daily_visits)
+
+
+@app.route("/api/reports/user_visits", methods=["GET"])
+def all_user_visits():
+    result = db.session.execute(text("""
+    SELECT t.user_id,
+        t.visits,
+        users.joined_at
+    FROM   (SELECT tokens.user_id,
+                Count(*) AS visits
+            FROM   tokens
+            GROUP  BY user_id) AS t
+        LEFT JOIN users
+                ON t.user_id = users.id;
+    """))
+
+    response = {}
+    for row in result:
+        response[row[0]] = {
+            "visits": row[1],
+            "joined_at": str(row[2])
+        }
     
-    try:
-        cursor = conn.cursor()
-        # Sample query - adjust based on your actual table structure
-        cursor.execute("""
-            SELECT DATE(check_in_time) as date, COUNT(*) as check_ins
-            FROM user_checkins 
-            GROUP BY DATE(check_in_time)
-            ORDER BY date DESC
-            LIMIT 30
-        """)
-        
-        results = cursor.fetchall()
-        data = [{"date": str(row[0]), "check_ins": row[1]} for row in results]
-        
-        cursor.close()
-        conn.close()
-        
-        return jsonify({
-            "report_type": "daily_usage",
-            "data": data,
-            "timestamp": datetime.now().isoformat()
-        }), 200
-        
-    except psycopg2.Error as e:
-        conn.close()
-        return jsonify({"error": f"Database query failed: {str(e)}"}), 500
-
-@app.route('/api/reports/user_visits')
-def user_visits_report():
-    """Generate report for check-ins grouped by users"""
-    conn = get_db_connection()
-    if not conn:
-        return jsonify({"error": "Database connection failed"}), 500
-    
-    try:
-        cursor = conn.cursor()
-        # Sample query - adjust based on your actual table structure
-        cursor.execute("""
-            SELECT u.username, COUNT(c.id) as visit_count
-            FROM users u
-            LEFT JOIN user_checkins c ON u.id = c.user_id
-            GROUP BY u.id, u.username
-            ORDER BY visit_count DESC
-            LIMIT 50
-        """)
-        
-        results = cursor.fetchall()
-        data = [{"username": row[0], "visit_count": row[1]} for row in results]
-        
-        cursor.close()
-        conn.close()
-        
-        return jsonify({
-            "report_type": "user_visits",
-            "data": data,
-            "timestamp": datetime.now().isoformat()
-        }), 200
-        
-    except psycopg2.Error as e:
-        conn.close()
-        return jsonify({"error": f"Database query failed: {str(e)}"}), 500
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5153, debug=False)
+    return jsonify(response)
 
 
+scheduler = BackgroundScheduler()
+job = scheduler.add_job(get_daily_visits, 'interval', seconds=30)
+scheduler.start()
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=port_number)
