@@ -10,6 +10,7 @@ from sqlalchemy import and_, text
 from random import randint
 
 from config import app, db
+from models import User, Token
 
 # Configure logging to output to stdout for CloudWatch
 logging.basicConfig(
@@ -43,9 +44,9 @@ def readiness_check():
     try:
         # Test database connection and basic queries
         db.session.execute(text("SELECT 1"))
-        result = db.session.execute(text("SELECT COUNT(*) FROM tokens"))
-        token_count = result.scalar()
-        logger.info(f"Readiness check: Database OK, {token_count} tokens in database")
+        token_count = Token.query.count()
+        user_count = User.query.count()
+        logger.info(f"Readiness check: Database OK, {user_count} users and {token_count} tokens in database")
         return "ok"
     except Exception as e:
         logger.error(f"Readiness check failed: {str(e)}")
@@ -60,44 +61,35 @@ def periodic_database_check():
             db.session.execute(text("SELECT 1"))
             logger.info("Database connected successfully")
             
-            # Get table counts and log with reviewer requested format
-            tables_to_check = ['tokens', 'users']
-            total_records = 0
+            # Get table counts using SQLAlchemy models
+            user_count = User.query.count()
+            token_count = Token.query.count()
+            total_records = user_count + token_count
             
-            for table in tables_to_check:
-                try:
-                    result = db.session.execute(text(f"SELECT COUNT(*) FROM {table}"))
-                    count = result.scalar()
-                    total_records += count
-                    logger.info(f"Fetched {count} records from {table} table")
-                except Exception as e:
-                    logger.warning(f"Could not query {table} table: {str(e)}")
+            logger.info(f"Fetched {user_count} records from users table")
+            logger.info(f"Fetched {token_count} records from tokens table")
             
             # Log total records fetched - Reviewer requested message
-            if total_records > 0:
-                logger.info(f"Fetched {total_records} records")
-            else:
-                logger.info("Fetched 0 records")
+            logger.info(f"Fetched {total_records} records")
             
     except Exception as e:
         logger.error(f"Database check failed: {str(e)}")
 
 def get_daily_visits():
-    """Original function - now calls the enhanced periodic check"""
+    """Get daily visits using SQLAlchemy models"""
     periodic_database_check()
     
     with app.app_context():
-        result = db.session.execute(text("""
-        SELECT Date(created_at) AS date,
-            Count(*)         AS visits
-        FROM   tokens
-        WHERE  used_at IS NOT NULL
-        GROUP  BY Date(created_at)
-        """))
-
+        # Get tokens that have been used (used_at is not None)
+        used_tokens = Token.query.filter(Token.used_at.isnot(None)).all()
+        
         response = {}
-        for row in result:
-            response[str(row[0])] = row[1]
+        for token in used_tokens:
+            date_str = token.used_at.date().strftime('%Y-%m-%d')
+            if date_str in response:
+                response[date_str] += 1
+            else:
+                response[date_str] = 1
 
         logger.info(f"Daily visits summary: {response}")
         return response
@@ -110,45 +102,66 @@ def daily_visits():
 
 @app.route("/api/reports/user_visits", methods=["GET"])
 def all_user_visits():
-    result = db.session.execute(text("""
-    SELECT t.user_id,
-        t.visits,
-        users.joined_at
-    FROM   (SELECT tokens.user_id,
-                Count(*) AS visits
-            FROM   tokens
-            GROUP  BY user_id) AS t
-        LEFT JOIN users
-                ON t.user_id = users.id;
-    """))
-
+    """Get user visits using SQLAlchemy models"""
+    users = User.query.all()
     response = {}
-    for row in result:
-        response[row[0]] = {
-            "visits": row[1],
-            "joined_at": str(row[2])
+    
+    for user in users:
+        token_count = Token.query.filter_by(user_id=user.id).count()
+        response[user.id] = {
+            "visits": token_count,
+            "joined_at": str(user.joined_at)
         }
     
     return jsonify(response)
 
 
 def startup_database_test():
-    """Test database connection on startup"""
+    """Test database connection and create tables on startup"""
     try:
         with app.app_context():
             # Test basic connection
             db.session.execute(text("SELECT 1"))
             logger.info("Startup: Database connected successfully")
             
-            # Get initial table counts
-            tables = ['tokens', 'users']
-            for table in tables:
-                try:
-                    result = db.session.execute(text(f"SELECT COUNT(*) FROM {table}"))
-                    count = result.scalar()
-                    logger.info(f"Startup: Found {count} records in {table} table")
-                except Exception as e:
-                    logger.warning(f"Startup: Could not query {table} table: {str(e)}")
+            # Create all tables
+            db.create_all()
+            logger.info("Startup: Database tables created/verified")
+            
+            # Add sample data if tables are empty
+            user_count = User.query.count()
+            token_count = Token.query.count()
+            
+            if user_count == 0:
+                # Create sample users
+                sample_users = [
+                    User(username="alice", email="alice@example.com"),
+                    User(username="bob", email="bob@example.com"),
+                    User(username="charlie", email="charlie@example.com")
+                ]
+                for user in sample_users:
+                    db.session.add(user)
+                db.session.commit()
+                logger.info("Startup: Created 3 sample users")
+            
+            if token_count == 0:
+                # Create sample tokens
+                users = User.query.all()
+                for i, user in enumerate(users):
+                    token = Token(
+                        user_id=user.id,
+                        token_value=f"token_{user.username}_{i+1}",
+                        visits=i+1,
+                        used_at=datetime.utcnow() if i < 2 else None
+                    )
+                    db.session.add(token)
+                db.session.commit()
+                logger.info("Startup: Created sample tokens")
+            
+            # Get final table counts
+            final_user_count = User.query.count()
+            final_token_count = Token.query.count()
+            logger.info(f"Startup: Database ready with {final_user_count} users and {final_token_count} tokens")
                     
     except Exception as e:
         logger.error(f"Startup: Database connection failed: {str(e)}")
